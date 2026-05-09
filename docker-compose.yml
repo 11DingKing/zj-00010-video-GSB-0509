@@ -1,0 +1,9 @@
+services:
+  video-editor:
+    build: .
+    ports:
+      - "16010:3000"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - WATCHPACK_POLLING=true
