@@ -19,8 +19,7 @@ export function PreviewPlayer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRefsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const animationFrameRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const startCurrentTimeRef = useRef<number>(0);
+  const lastUpdateTimeRef = useRef<number>(0);
   const [videoUrls, setVideoUrls] = useState<Map<string, string>>(new Map());
   const [loadingVideos, setLoadingVideos] = useState<Set<string>>(new Set());
 
@@ -98,8 +97,10 @@ export function PreviewPlayer() {
 
       if (!isNaN(video.duration) && video.duration > 0) {
         const seekTime = Math.min(Math.max(videoTime, 0), video.duration);
-        if (Math.abs(video.currentTime - seekTime) > 0.03) {
-          video.currentTime = seekTime;
+        if (!video.paused || Math.abs(video.currentTime - seekTime) > 0.5) {
+          if (Math.abs(video.currentTime - seekTime) > 0.03) {
+            video.currentTime = seekTime;
+          }
         }
 
         const scale = clip.effects.scale;
@@ -171,32 +172,92 @@ export function PreviewPlayer() {
       return;
     }
 
-    startTimeRef.current = performance.now();
-    startCurrentTimeRef.current = currentTime;
+    const videoClipsAtStart = activeClips.video.filter(
+      (c) => currentTime >= c.startTime && currentTime < c.startTime + c.duration
+    );
 
-    const animate = (timestamp: number) => {
-      const elapsed = (timestamp - startTimeRef.current) / 1000;
-      let newTime = startCurrentTimeRef.current + elapsed;
+    for (const clip of videoClipsAtStart) {
+      const video = videoRefsRef.current.get(clip.id);
+      if (video && video.paused) {
+        const clipTime = (currentTime - clip.startTime) / clip.effects.speed;
+        const videoTime = clip.offset + clipTime;
+        if (!isNaN(video.duration) && videoTime < video.duration) {
+          video.currentTime = videoTime;
+          video.play().catch(() => {});
+        }
+      }
+    }
 
-      if (project && newTime >= project.duration) {
-        newTime = 0;
-        startTimeRef.current = timestamp;
-        startCurrentTimeRef.current = 0;
+    const handleTimeUpdate = () => {
+      if (!project) return;
+
+      let bestTime = -1;
+      for (const clip of activeClips.video) {
+        const video = videoRefsRef.current.get(clip.id);
+        if (!video || video.paused || isNaN(video.duration)) continue;
+
+        if (currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration) {
+          const clipTimeFromVideo = (video.currentTime - clip.offset) * clip.effects.speed;
+          const timelineTime = clip.startTime + clipTimeFromVideo;
+          if (timelineTime > bestTime) {
+            bestTime = timelineTime;
+          }
+        }
       }
 
-      setCurrentTime(newTime);
-      renderFrame(newTime);
+      if (bestTime >= 0) {
+        if (bestTime >= project.duration) {
+          setCurrentTime(0);
+          for (const clip of activeClips.video) {
+            const video = videoRefsRef.current.get(clip.id);
+            if (video) video.pause();
+          }
+          setIsPlaying(false);
+        } else {
+          setCurrentTime(bestTime);
+        }
+      } else {
+        const now = performance.now();
+        if (now - lastUpdateTimeRef.current > 250) {
+          lastUpdateTimeRef.current = now;
+          let nextTime = currentTime + 1 / (project.fps || 30);
+          if (nextTime >= project.duration) {
+            setCurrentTime(0);
+            setIsPlaying(false);
+          } else {
+            setCurrentTime(nextTime);
+          }
+        }
+      }
+    };
+
+    for (const clip of activeClips.video) {
+      const video = videoRefsRef.current.get(clip.id);
+      if (video) {
+        video.addEventListener('timeupdate', handleTimeUpdate);
+      }
+    }
+
+    const animate = () => {
+      renderFrame(currentTime);
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
     animationFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
+      for (const clip of activeClips.video) {
+        const video = videoRefsRef.current.get(clip.id);
+        if (video) {
+          video.removeEventListener('timeupdate', handleTimeUpdate);
+          video.pause();
+        }
+      }
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, renderFrame, setCurrentTime, project, currentTime]);
+  }, [isPlaying, renderFrame, setCurrentTime, setIsPlaying, project, currentTime, activeClips]);
 
   useEffect(() => {
     if (!isPlaying) {
