@@ -1,16 +1,46 @@
-'use client';
+"use client";
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useProject } from '@/lib/context/ProjectContext';
-import { formatTime } from '@/lib/media/metadata';
-import type { TrackType, Clip, SubtitleClip, MediaAsset } from '@/types';
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useProject } from "@/lib/context/ProjectContext";
+import { formatTime } from "@/lib/media/metadata";
+import type { TrackType, Clip, SubtitleClip, MediaAsset } from "@/types";
 
 const TRACK_CONFIGS = [
-  { type: 'video' as TrackType, index: 0, name: '视频轨 1', height: 60, color: 'bg-indigo-600/50' },
-  { type: 'video' as TrackType, index: 1, name: '视频轨 2', height: 60, color: 'bg-indigo-500/50' },
-  { type: 'audio' as TrackType, index: 0, name: '音频轨 1', height: 50, color: 'bg-emerald-600/50' },
-  { type: 'audio' as TrackType, index: 1, name: '音频轨 2', height: 50, color: 'bg-emerald-500/50' },
-  { type: 'subtitle' as TrackType, index: 0, name: '字幕轨', height: 40, color: 'bg-amber-600/50' },
+  {
+    type: "video" as TrackType,
+    index: 0,
+    name: "视频轨 1",
+    height: 60,
+    color: "bg-indigo-600/50",
+  },
+  {
+    type: "video" as TrackType,
+    index: 1,
+    name: "视频轨 2",
+    height: 60,
+    color: "bg-indigo-500/50",
+  },
+  {
+    type: "audio" as TrackType,
+    index: 0,
+    name: "音频轨 1",
+    height: 50,
+    color: "bg-emerald-600/50",
+  },
+  {
+    type: "audio" as TrackType,
+    index: 1,
+    name: "音频轨 2",
+    height: 50,
+    color: "bg-emerald-500/50",
+  },
+  {
+    type: "subtitle" as TrackType,
+    index: 0,
+    name: "字幕轨",
+    height: 40,
+    color: "bg-amber-600/50",
+  },
 ];
 
 export function Timeline() {
@@ -32,8 +62,9 @@ export function Timeline() {
   } = useProject();
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<{
-    type: 'move' | 'resize-left' | 'resize-right' | 'drop' | null;
+    type: "move" | "resize-left" | "resize-right" | "drop" | null;
     clipId: string | null;
     startX: number;
     startY: number;
@@ -51,7 +82,7 @@ export function Timeline() {
     originalStartTime: 0,
     originalDuration: 0,
     originalOffset: 0,
-    originalTrackType: 'video',
+    originalTrackType: "video",
     originalTrackIndex: 0,
     asset: null,
   });
@@ -62,10 +93,12 @@ export function Timeline() {
   const totalWidth = Math.max(project.duration * pixelsPerSecond, 1000);
 
   const getTrackClips = (type: TrackType, index: number) => {
-    if (type === 'subtitle') {
+    if (type === "subtitle") {
       return project.subtitleClips.filter((c) => c.trackIndex === index);
     }
-    return project.clips.filter((c) => c.trackType === type && c.trackIndex === index);
+    return project.clips.filter(
+      (c) => c.trackType === type && c.trackIndex === index,
+    );
   };
 
   const getTrackTop = (type: TrackType, index: number): number => {
@@ -77,7 +110,9 @@ export function Timeline() {
     return top;
   };
 
-  const getTrackAtPosition = (y: number): { type: TrackType; index: number } | null => {
+  const getTrackAtPosition = (
+    y: number,
+  ): { type: TrackType; index: number } | null => {
     let cumulativeY = 0;
     for (const track of TRACK_CONFIGS) {
       if (y >= cumulativeY && y < cumulativeY + track.height) {
@@ -101,12 +136,15 @@ export function Timeline() {
     setSelectedClipId(clipId);
   };
 
-  const handleClipDragStart = (e: React.MouseEvent, clip: Clip | SubtitleClip) => {
+  const handleClipDragStart = (
+    e: React.MouseEvent,
+    clip: Clip | SubtitleClip,
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedClipId(clip.id);
     setDragState({
-      type: 'move',
+      type: "move",
       clipId: clip.id,
       startX: e.clientX,
       startY: e.clientY,
@@ -122,13 +160,13 @@ export function Timeline() {
   const handleClipResizeStart = (
     e: React.MouseEvent,
     clip: Clip | SubtitleClip,
-    edge: 'left' | 'right'
+    edge: "left" | "right",
   ) => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedClipId(clip.id);
     setDragState({
-      type: edge === 'left' ? 'resize-left' : 'resize-right',
+      type: edge === "left" ? "resize-left" : "resize-right",
       clipId: clip.id,
       startX: e.clientX,
       startY: e.clientY,
@@ -144,36 +182,43 @@ export function Timeline() {
   const handleTrackDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const assetData = e.dataTransfer.getData('application/x-asset');
+      const assetData = e.dataTransfer.getData("application/x-asset");
       if (!assetData) return;
 
       const asset: MediaAsset = JSON.parse(assetData);
       const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-      const x = e.clientX - rect.left;
+      const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+      const x = e.clientX - rect.left + scrollLeft;
       const y = e.clientY - rect.top;
       const time = x / pixelsPerSecond;
       const track = getTrackAtPosition(y);
 
       if (track) {
-        if (track.type === 'subtitle') {
+        if (track.type === "subtitle") {
           addSubtitleClip(time, 3, track.index);
-        } else if ((track.type === 'video' && (asset.type === 'video' || asset.type === 'image')) ||
-                   (track.type === 'audio' && asset.type === 'audio') ||
-                   (track.type === 'video' && asset.type === 'audio')) {
-          if (track.type === 'audio' && asset.type === 'audio') {
-            addClip(asset.id, 'audio', track.index, time);
-          } else if (track.type === 'video' && (asset.type === 'video' || asset.type === 'image')) {
-            addClip(asset.id, 'video', track.index, time);
+        } else if (
+          (track.type === "video" &&
+            (asset.type === "video" || asset.type === "image")) ||
+          (track.type === "audio" && asset.type === "audio") ||
+          (track.type === "video" && asset.type === "audio")
+        ) {
+          if (track.type === "audio" && asset.type === "audio") {
+            addClip(asset.id, "audio", track.index, time);
+          } else if (
+            track.type === "video" &&
+            (asset.type === "video" || asset.type === "image")
+          ) {
+            addClip(asset.id, "video", track.index, time);
           }
         }
       }
     },
-    [pixelsPerSecond, addClip, addSubtitleClip]
+    [pixelsPerSecond, addClip, addSubtitleClip],
   );
 
   const handleTrackDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = "copy";
   };
 
   useEffect(() => {
@@ -185,7 +230,7 @@ export function Timeline() {
       const dx = (e.clientX - dragState.startX) / pixelsPerSecond;
       const dy = e.clientY - dragState.startY;
 
-      if (dragState.type === 'move') {
+      if (dragState.type === "move") {
         let newStartTime = dragState.originalStartTime + dx;
         newStartTime = Math.max(0, newStartTime);
 
@@ -202,18 +247,21 @@ export function Timeline() {
           }
         }
 
-        if (newTrackType !== dragState.originalTrackType || newTrackIndex !== dragState.originalTrackIndex) {
+        if (
+          newTrackType !== dragState.originalTrackType ||
+          newTrackIndex !== dragState.originalTrackIndex
+        ) {
           moveClipToTrack(dragState.clipId, newTrackType, newTrackIndex);
           dragState.originalTrackType = newTrackType;
           dragState.originalTrackIndex = newTrackIndex;
         }
 
         updateClip(dragState.clipId, { startTime: newStartTime });
-      } else if (dragState.type === 'resize-right') {
+      } else if (dragState.type === "resize-right") {
         let newDuration = dragState.originalDuration + dx;
         newDuration = Math.max(0.1, newDuration);
         updateClip(dragState.clipId, { duration: newDuration });
-      } else if (dragState.type === 'resize-left') {
+      } else if (dragState.type === "resize-left") {
         let newStartTime = dragState.originalStartTime + dx;
         let newDuration = dragState.originalDuration - dx;
         let newOffset = dragState.originalOffset + dx;
@@ -239,18 +287,18 @@ export function Timeline() {
         originalStartTime: 0,
         originalDuration: 0,
         originalOffset: 0,
-        originalTrackType: 'video',
+        originalTrackType: "video",
         originalTrackIndex: 0,
         asset: null,
       });
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [dragState, pixelsPerSecond, updateClip, moveClipToTrack]);
 
@@ -258,19 +306,19 @@ export function Timeline() {
     if (!selectedClipId) return;
 
     switch (e.key) {
-      case 'Delete':
-      case 'Backspace':
+      case "Delete":
+      case "Backspace":
         e.preventDefault();
         deleteClip(selectedClipId);
         break;
-      case 's':
-      case 'S':
+      case "s":
+      case "S":
         if (e.ctrlKey || e.metaKey) return;
         e.preventDefault();
         splitClip(selectedClipId);
         break;
-      case 'd':
-      case 'D':
+      case "d":
+      case "D":
         if (e.ctrlKey || e.metaKey) return;
         e.preventDefault();
         duplicateClip(selectedClipId);
@@ -291,38 +339,45 @@ export function Timeline() {
           <span className="absolute -top-5 left-1 text-xs text-dark-400">
             {formatTime(t)}
           </span>
-        </div>
+        </div>,
       );
     }
     return markers;
   };
 
-  const renderClip = (clip: Clip | SubtitleClip, trackConfig: typeof TRACK_CONFIGS[0]) => {
+  const renderClip = (
+    clip: Clip | SubtitleClip,
+    trackConfig: (typeof TRACK_CONFIGS)[0],
+  ) => {
     const asset = project.assets.find((a) => a.id === clip.assetId);
     const isSelected = selectedClipId === clip.id;
     const left = clip.startTime * pixelsPerSecond;
     const width = Math.max(clip.duration * pixelsPerSecond, 4);
-    const isSubtitle = 'text' in clip;
+    const isSubtitle = "text" in clip;
 
     return (
       <div
         key={clip.id}
         className={`absolute top-1 bottom-1 rounded cursor-move flex items-center overflow-hidden transition-shadow ${
           isSelected
-            ? 'ring-2 ring-accent-highlight shadow-lg shadow-accent-highlight/20'
-            : 'hover:ring-1 hover:ring-accent-primary/50'
+            ? "ring-2 ring-accent-highlight shadow-lg shadow-accent-highlight/20"
+            : "hover:ring-1 hover:ring-accent-primary/50"
         }`}
         style={{
           left: `${left}px`,
           width: `${width}px`,
-          backgroundColor: isSubtitle ? '#d97706' : trackConfig.type === 'audio' ? '#059669' : '#4f46e5',
+          backgroundColor: isSubtitle
+            ? "#d97706"
+            : trackConfig.type === "audio"
+              ? "#059669"
+              : "#4f46e5",
         }}
         onClick={(e) => handleClipClick(e, clip.id)}
         onMouseDown={(e) => handleClipDragStart(e, clip)}
       >
         <div
           className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30"
-          onMouseDown={(e) => handleClipResizeStart(e, clip, 'left')}
+          onMouseDown={(e) => handleClipResizeStart(e, clip, "left")}
         />
 
         <div className="flex-1 px-2 min-w-0 flex items-center gap-2">
@@ -335,19 +390,17 @@ export function Timeline() {
           )}
           <div className="min-w-0 text-xs text-white">
             <div className="font-medium truncate">
-              {isSubtitle ? (clip as SubtitleClip).text : asset?.name || 'Clip'}
+              {isSubtitle ? (clip as SubtitleClip).text : asset?.name || "Clip"}
             </div>
             {width > 100 && (
-              <div className="opacity-75">
-                {formatTime(clip.duration)}
-              </div>
+              <div className="opacity-75">{formatTime(clip.duration)}</div>
             )}
           </div>
         </div>
 
         <div
           className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/30"
-          onMouseDown={(e) => handleClipResizeStart(e, clip, 'right')}
+          onMouseDown={(e) => handleClipResizeStart(e, clip, "right")}
         />
       </div>
     );
@@ -356,7 +409,11 @@ export function Timeline() {
   const totalTracksHeight = TRACK_CONFIGS.reduce((sum, t) => sum + t.height, 0);
 
   return (
-    <div className="h-80 bg-dark-800 border-t border-dark-500 flex flex-col" onKeyDown={handleKeyDown} tabIndex={0}>
+    <div
+      className="h-80 bg-dark-800 border-t border-dark-500 flex flex-col"
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
       <div className="h-10 px-4 flex items-center justify-between border-b border-dark-500 bg-dark-700">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm">
@@ -377,8 +434,8 @@ export function Timeline() {
           <button
             className={`px-3 py-1 rounded ${
               selectedClipId
-                ? 'bg-accent-warning hover:bg-accent-warning/80 text-white'
-                : 'bg-dark-600 text-dark-400 cursor-not-allowed'
+                ? "bg-accent-warning hover:bg-accent-warning/80 text-white"
+                : "bg-dark-600 text-dark-400 cursor-not-allowed"
             }`}
             disabled={!selectedClipId}
             onClick={() => selectedClipId && splitClip(selectedClipId)}
@@ -389,8 +446,8 @@ export function Timeline() {
           <button
             className={`px-3 py-1 rounded ${
               selectedClipId
-                ? 'bg-accent-secondary hover:bg-accent-secondary/80 text-white'
-                : 'bg-dark-600 text-dark-400 cursor-not-allowed'
+                ? "bg-accent-secondary hover:bg-accent-secondary/80 text-white"
+                : "bg-dark-600 text-dark-400 cursor-not-allowed"
             }`}
             disabled={!selectedClipId}
             onClick={() => selectedClipId && duplicateClip(selectedClipId)}
@@ -401,8 +458,8 @@ export function Timeline() {
           <button
             className={`px-3 py-1 rounded ${
               selectedClipId
-                ? 'bg-accent-danger hover:bg-accent-danger/80 text-white'
-                : 'bg-dark-600 text-dark-400 cursor-not-allowed'
+                ? "bg-accent-danger hover:bg-accent-danger/80 text-white"
+                : "bg-dark-600 text-dark-400 cursor-not-allowed"
             }`}
             disabled={!selectedClipId}
             onClick={() => selectedClipId && deleteClip(selectedClipId)}
@@ -433,11 +490,14 @@ export function Timeline() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" ref={scrollContainerRef}>
           <div
             ref={scrollRef}
             className="relative overflow-hidden"
-            style={{ width: `${Math.max(totalWidth + 100, 0)}px`, height: `${totalTracksHeight + 30}px` }}
+            style={{
+              width: `${Math.max(totalWidth + 100, 0)}px`,
+              height: `${totalTracksHeight + 30}px`,
+            }}
             onDrop={handleTrackDrop}
             onDragOver={handleTrackDragOver}
             onClick={handleTrackClick}
@@ -448,7 +508,9 @@ export function Timeline() {
 
             {TRACK_CONFIGS.map((track, i) => {
               const clips = getTrackClips(track.type, track.index);
-              const top = 30 + TRACK_CONFIGS.slice(0, i).reduce((sum, t) => sum + t.height, 0);
+              const top =
+                30 +
+                TRACK_CONFIGS.slice(0, i).reduce((sum, t) => sum + t.height, 0);
 
               return (
                 <div
@@ -468,7 +530,7 @@ export function Timeline() {
               className="absolute top-0 bottom-0 w-0.5 bg-accent-danger pointer-events-none z-10"
               style={{
                 left: `${currentTime * pixelsPerSecond}px`,
-                boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                boxShadow: "0 0 8px rgba(239, 68, 68, 0.6)",
               }}
             >
               <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-accent-danger rotate-45" />
