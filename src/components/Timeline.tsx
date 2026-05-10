@@ -86,10 +86,7 @@ export function Timeline() {
     asset: null,
   });
 
-  if (!project) return null;
-
   const pixelsPerSecond = timelineScale;
-  const totalWidth = Math.max(project.duration * pixelsPerSecond, 1000);
 
   const getTrackClips = (type: TrackType, index: number) => {
     if (type === "subtitle") {
@@ -303,6 +300,10 @@ export function Timeline() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [dragState, pixelsPerSecond, updateClip, moveClipToTrack]);
+
+  if (!project) return null;
+
+  const totalWidth = Math.max(project.duration * pixelsPerSecond, 1000);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!selectedClipId) return;
