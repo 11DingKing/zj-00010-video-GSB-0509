@@ -140,12 +140,17 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   const saveCurrentProject = useCallback(() => {
     if (!project) return;
-    const updated = { ...project, updatedAt: Date.now() };
-    saveProject(updated);
-    setProject(updated);
-    setIsModified(false);
-    lastSaveRef.current = Date.now();
-    refreshProjects();
+    try {
+      const updated = { ...project, updatedAt: Date.now() };
+      saveProject(updated);
+      setProject(updated);
+      setIsModified(false);
+      lastSaveRef.current = Date.now();
+      refreshProjects();
+    } catch (error: any) {
+      console.error('Failed to save project:', error);
+      alert(`保存工程失败：${error?.message || '未知错误'}`);
+    }
   }, [project, refreshProjects]);
 
   const deleteProject = useCallback((id: string) => {
@@ -172,6 +177,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     if (!project) return;
 
     const newAssets: MediaAsset[] = [];
+    let hasErrors = false;
+    let errorMessage = '';
 
     for (const file of files) {
       try {
@@ -225,8 +232,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         };
 
         newAssets.push(asset);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to import file:', file.name, error);
+        hasErrors = true;
+        errorMessage = error?.message || '素材保存失败';
       }
     }
 
@@ -239,6 +248,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         };
       });
       setIsModified(true);
+    }
+
+    if (hasErrors) {
+      alert(`导入素材失败：${errorMessage}`);
     }
   }, [project]);
 

@@ -149,7 +149,9 @@ export function Timeline() {
 
       const asset: MediaAsset = JSON.parse(assetData);
       const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-      const x = e.clientX - rect.left;
+      const scrollContainer = scrollRef.current?.parentElement;
+      const scrollLeft = scrollContainer?.scrollLeft || 0;
+      const x = e.clientX - rect.left + scrollLeft;
       const y = e.clientY - rect.top;
       const time = x / pixelsPerSecond;
       const track = getTrackAtPosition(y);
