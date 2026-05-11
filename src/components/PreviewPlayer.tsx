@@ -18,9 +18,8 @@ export function PreviewPlayer() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRefsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const masterVideoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const startCurrentTimeRef = useRef<number>(0);
   const [videoUrls, setVideoUrls] = useState<Map<string, string>>(new Map());
   const [loadingVideos, setLoadingVideos] = useState<Set<string>>(new Set());
 
@@ -44,7 +43,7 @@ export function PreviewPlayer() {
       const newUrls = new Map(videoUrls);
       const newLoading = new Set(loadingVideos);
       
-      for (const assetId of assetIds) {
+      for (const assetId of Array.from(assetIds)) {
         if (!newUrls.has(assetId) && !newLoading.has(assetId)) {
           newLoading.add(assetId);
           const url = await getAssetUrl(assetId);
@@ -168,35 +167,99 @@ export function PreviewPlayer() {
   useEffect(() => {
     if (!isPlaying) {
       renderFrame(currentTime);
+      if (masterVideoRef.current) {
+        masterVideoRef.current.pause();
+      }
       return;
     }
 
-    startTimeRef.current = performance.now();
-    startCurrentTimeRef.current = currentTime;
-
-    const animate = (timestamp: number) => {
-      const elapsed = (timestamp - startTimeRef.current) / 1000;
-      let newTime = startCurrentTimeRef.current + elapsed;
-
-      if (project && newTime >= project.duration) {
-        newTime = 0;
-        startTimeRef.current = timestamp;
-        startCurrentTimeRef.current = 0;
+    const firstVideoClip = activeClips.video[0];
+    if (firstVideoClip && videoUrls.has(firstVideoClip.assetId)) {
+      const url = videoUrls.get(firstVideoClip.assetId)!;
+      if (!masterVideoRef.current) {
+        masterVideoRef.current = document.createElement('video');
+        masterVideoRef.current.preload = 'auto';
+        masterVideoRef.current.muted = true;
+        masterVideoRef.current.crossOrigin = 'anonymous';
       }
 
-      setCurrentTime(newTime);
-      renderFrame(newTime);
+      const masterVideo = masterVideoRef.current;
+      if (masterVideo.src !== url) {
+        masterVideo.src = url;
+      }
+
+      const handleTimeUpdate = () => {
+        if (!project || !masterVideo) return;
+
+        const clip = firstVideoClip;
+        const videoTime = masterVideo.currentTime;
+        const clipTime = (videoTime - clip.offset) * clip.effects.speed;
+        const newTime = clip.startTime + clipTime;
+
+        if (newTime >= 0 && newTime < project.duration) {
+          setCurrentTime(newTime);
+          renderFrame(newTime);
+        } else if (newTime >= project.duration) {
+          setCurrentTime(0);
+          masterVideo.currentTime = firstVideoClip.offset;
+        }
+      };
+
+      const handleLoadedMetadata = () => {
+        if (!masterVideo || !project) return;
+        const clip = firstVideoClip;
+        const clipTime = (currentTime - clip.startTime) / clip.effects.speed;
+        const seekTime = clip.offset + clipTime;
+        if (seekTime >= 0 && seekTime < masterVideo.duration) {
+          masterVideo.currentTime = seekTime;
+        }
+        masterVideo.play().catch(() => {});
+      };
+
+      masterVideo.addEventListener('timeupdate', handleTimeUpdate);
+      masterVideo.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+      if (masterVideo.readyState >= 1) {
+        const clip = firstVideoClip;
+        const clipTime = (currentTime - clip.startTime) / clip.effects.speed;
+        const seekTime = clip.offset + clipTime;
+        if (seekTime >= 0 && seekTime < masterVideo.duration) {
+          masterVideo.currentTime = seekTime;
+        }
+        masterVideo.play().catch(() => {});
+      }
+
+      return () => {
+        masterVideo.removeEventListener('timeupdate', handleTimeUpdate);
+        masterVideo.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        masterVideo.pause();
+      };
+    } else {
+      const startTime = performance.now();
+      const startCurrentTime = currentTime;
+
+      const animate = (timestamp: number) => {
+        const elapsed = (timestamp - startTime) / 1000;
+        let newTime = startCurrentTime + elapsed;
+
+        if (project && newTime >= project.duration) {
+          newTime = 0;
+        }
+
+        setCurrentTime(newTime);
+        renderFrame(newTime);
+        animationFrameRef.current = requestAnimationFrame(animate);
+      };
+
       animationFrameRef.current = requestAnimationFrame(animate);
-    };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isPlaying, renderFrame, setCurrentTime, project, currentTime]);
+      return () => {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      };
+    }
+  }, [isPlaying, renderFrame, setCurrentTime, project, currentTime, activeClips.video, videoUrls]);
 
   useEffect(() => {
     if (!isPlaying) {
